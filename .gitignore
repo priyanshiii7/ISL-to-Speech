@@ -1,0 +1,44 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+ENV/
+env/
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook checkpoints (if any)
+.ipynb_checkpoints/
+
+# PyCharm / VS Code
+.idea/
+.vscode/
+
+# Logs and local files
+*.log
+
+# Test & output data
+*.mp4
+*.avi
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Environment variables / secrets (if any)
+.env
+
+# Compiled C files (if using C extensions)
+*.so
+*p
+# Build / distribution
+build/
+dist/
+*.egg-info/
