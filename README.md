@@ -111,5 +111,3 @@ Captures gesture samples via webcam for building custom training datasets.
 - [ ] Cloud-based Model Deployment
 - [ ] Larger Gesture Vocabulary (100+ signs)
 - [ ] User Authentication & Personalization
-
-**Made with ❤️ to make communication accessible for everyone**
