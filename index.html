@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ISL · Live Recognition</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #0a0c0f;
+    --surface:  #111419;
+    --card:     #161b22;
+    --border:   #21262d;
+    --border2:  #30363d;
+    --text:     #e6edf3;
+    --muted:    #7d8590;
+    --dimmed:   #484f58;
+    --green:    #3fb950;
+    --green-bg: #0d2818;
+    --green-dim:#1a3c24;
+    --teal:     #58a6ff;
+    --teal-bg:  #051d35;
+    --amber:    #d29922;
+    --amber-bg: #2e1f00;
+    --red:      #f85149;
+    --mono:     'JetBrains Mono', monospace;
+    --sans:     'Inter', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: 48px 1fr;
+  }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+  }
+  .topbar-logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--green);
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(63,185,80,0.4); }
+    50%       { opacity: 0.7; box-shadow: 0 0 0 4px rgba(63,185,80,0); }
+  }
+  .topbar-status {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .status-pill.live { border-color: var(--green-dim); background: var(--green-bg); color: var(--green); }
+  .status-pill.offline { border-color: var(--border); color: var(--dimmed); }
+  .status-pill .dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: currentColor;
+  }
+  .status-pill.live .dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+
+  /* ── MAIN LAYOUT ── */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* ── LEFT: CAMERA + DETECTION ── */
+  .left-col {
+    display: grid;
+    grid-template-rows: 1fr 180px;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+  }
+
+  .camera-area {
+    position: relative;
+    background: #000;
+    overflow: hidden;
+  }
+  #video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transform: scaleX(-1);
+  }
+  #overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /* corner brackets */
+  .camera-corners {
+    position: absolute;
+    inset: 16px;
+    pointer-events: none;
+  }
+  .corner {
+    position: absolute;
+    width: 20px; height: 20px;
+  }
+  .corner::before, .corner::after {
+    content: '';
+    position: absolute;
+    background: var(--green);
+    opacity: 0.7;
+  }
+  .corner::before { width: 2px; height: 100%; }
+  .corner::after  { width: 100%; height: 2px; }
+  .corner.tl { top: 0; left: 0; }
+  .corner.tr { top: 0; right: 0; transform: rotate(90deg); }
+  .corner.bl { bottom: 0; left: 0; transform: rotate(-90deg); }
+  .corner.br { bottom: 0; right: 0; transform: rotate(180deg); }
+
+  /* big letter overlay */
+  .detection-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .big-letter {
+    font-family: var(--mono);
+    font-size: 96px;
+    font-weight: 600;
+    color: var(--green);
+    text-shadow: 0 0 40px rgba(63,185,80,0.5);
+    opacity: 0;
+    transform: scale(0.8);
+    transition: opacity 0.1s ease, transform 0.15s ease;
+    line-height: 1;
+  }
+  .big-letter.active {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .big-letter.flash {
+    animation: letter-flash 0.2s ease-out;
+  }
+  @keyframes letter-flash {
+    0%   { transform: scale(1.3); text-shadow: 0 0 60px rgba(63,185,80,0.9); }
+    100% { transform: scale(1);   text-shadow: 0 0 40px rgba(63,185,80,0.5); }
+  }
+
+  /* confidence bar overlay */
+  .conf-overlay {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    pointer-events: none;
+  }
+  .conf-bar-track {
+    height: 3px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .conf-bar-fill {
+    height: 100%;
+    background: var(--green);
+    border-radius: 2px;
+    transition: width 0.15s ease;
+    width: 0%;
+  }
+  .conf-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 5px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* no-camera placeholder */
+  .cam-placeholder {
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: var(--surface);
+  }
+  .cam-placeholder svg { opacity: 0.2; }
+  .cam-placeholder p { font-size: 13px; color: var(--muted); }
+  .cam-btn {
+    padding: 8px 20px;
+    border-radius: 6px;
+    border: 1px solid var(--green-dim);
+    background: var(--green-bg);
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .cam-btn:hover { background: var(--green-dim); }
+
+  /* ── BOTTOM: WORD BUILDER ── */
+  .word-area {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 16px 20px;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 10px;
+  }
+  .word-area-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dimmed);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .word-display {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    min-height: 40px;
+  }
+  .letter-chip {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1;
+    animation: chip-in 0.15s ease-out;
+  }
+  @keyframes chip-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .cursor-blink {
+    display: inline-block;
+    width: 2px; height: 24px;
+    background: var(--green);
+    margin-left: 2px;
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+  .word-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .action-btn {
+    padding: 5px 12px;
+    border-radius: 5px;
+    border: 1px solid var(--border2);
+    background: var(--card);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .action-btn:hover { border-color: var(--border2); color: var(--text); }
+  .action-btn.speak {
+    border-color: var(--green-dim);
+    background: var(--green-bg);
+    color: var(--green);
+  }
+  .action-btn.speak:hover { background: var(--green-dim); }
+  .action-btn.del { border-color: transparent; }
+  .action-btn.del:hover { border-color: var(--red); color: var(--red); }
+  .timeout-bar {
+    position: absolute;
+    bottom: 0; left: 0;
+    height: 2px;
+    background: var(--teal);
+    transition: width 0.1s linear;
+    border-radius: 0 1px 1px 0;
+  }
+  .word-area { position: relative; }
+
+  /* ── RIGHT PANEL ── */
+  .right-col {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  /* Tabs */
+  .panel-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-tab {
+    flex: 1;
+    padding: 12px 0;
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--muted);
+    cursor: pointer;
+    text-align: center;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+  .panel-tab:hover { color: var(--text); }
+  .panel-tab.active { color: var(--green); border-bottom-color: var(--green); }
+
+  /* Panel content */
+  .panel-content { overflow-y: auto; }
+  .panel-content::-webkit-scrollbar { width: 4px; }
+  .panel-content::-webkit-scrollbar-track { background: transparent; }
+  .panel-content::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .tab-pane { display: none; padding: 16px; }
+  .tab-pane.active { display: block; }
+
+  /* Stats pane */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .stat-val {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat-val.green { color: var(--green); }
+  .stat-val.teal  { color: var(--teal); }
+  .stat-val.amber { color: var(--amber); }
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* Mini confidence chart */
+  .mini-chart-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dimmed);
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+  .mini-chart {
+    height: 48px;
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    margin-bottom: 16px;
+  }
+  .mini-bar {
+    flex: 1;
+    background: var(--green);
+    border-radius: 1px 1px 0 0;
+    transition: height 0.2s ease;
+    opacity: 0.6;
+    min-height: 2px;
+  }
+  .mini-bar.current { opacity: 1; }
+
+  /* History pane */
+  .history-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--dimmed);
+    font-size: 13px;
+    gap: 8px;
+  }
+  .history-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    animation: chip-in 0.2s ease-out;
+  }
+  .history-item:last-child { border-bottom: none; }
+  .hist-time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dimmed);
+    min-width: 40px;
+    margin-top: 2px;
+  }
+  .hist-word {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .hist-letters {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .hist-speak {
+    margin-left: auto;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--dimmed);
+    font-size: 10px;
+    cursor: pointer;
+    font-family: var(--mono);
+    flex-shrink: 0;
+    transition: color 0.15s;
+  }
+  .hist-speak:hover { color: var(--green); border-color: var(--green-dim); }
+
+  /* Settings pane */
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { font-size: 13px; color: var(--text); }
+  .setting-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .toggle {
+    width: 36px; height: 20px;
+    border-radius: 10px;
+    background: var(--border2);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+    border: none;
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--text);
+    top: 3px; left: 3px;
+    transition: transform 0.2s;
+  }
+  .toggle.on { background: var(--green); }
+  .toggle.on::after { transform: translateX(16px); }
+  select.setting-select {
+    background: var(--card);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .setting-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 80px; height: 3px;
+    background: var(--border2);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+  .range-val { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 20px; }
+
+  /* ── BOTTOM: TTS BAR ── */
+  .tts-bar {
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .tts-indicator {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .tts-indicator.speaking {
+    background: var(--green-bg);
+    border-color: var(--green-dim);
+    animation: speak-pulse 0.8s ease-in-out infinite;
+  }
+  @keyframes speak-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(63,185,80,0.3); }
+    50%       { box-shadow: 0 0 0 5px rgba(63,185,80,0); }
+  }
+  .sound-waves { display: flex; align-items: center; gap: 2px; }
+  .wave-bar {
+    width: 2px; border-radius: 1px;
+    background: var(--muted);
+    transition: height 0.2s ease;
+  }
+  .tts-indicator.speaking .wave-bar { background: var(--green); }
+  .tts-text {
+    font-size: 13px;
+    color: var(--muted);
+    font-style: italic;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tts-text.active { color: var(--green); font-style: normal; }
+
+  /* Hands landmark canvas */
+  #overlay { transform: scaleX(-1); }
+
+  /* Scrollbar global */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* Responsive: if too narrow collapse sidebar */
+  @media (max-width: 720px) {
+    .main { grid-template-columns: 1fr; }
+    .right-col { display: none; }
+    body { overflow: auto; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<header class="topbar" role="banner">
+  <div class="topbar-logo">
+    <div class="logo-dot" id="live-dot" aria-hidden="true"></div>
+    ISL · LIVE
+  </div>
+  <div class="topbar-status">
+    <span id="ws-status" class="status-pill offline" aria-live="polite">
+      <span class="dot"></span>backend offline
+    </span>
+    <span id="model-status" class="status-pill offline">
+      <span class="dot"></span>model not loaded
+    </span>
+    <span id="fps-display" style="font-size:11px;color:var(--dimmed)" aria-label="Frames per second">-- fps</span>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="main" role="main">
+
+  <!-- LEFT -->
+  <div class="left-col">
+    <div class="camera-area" id="cam-area">
+      <!-- placeholder shown before camera starts -->
+      <div class="cam-placeholder" id="cam-placeholder">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 10l4.553-2.069A1 1 0 0 1 21 8.82v6.362a1 1 0 0 1-1.447.894L15 14M3 8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8z"/>
+        </svg>
+        <p>Camera not started</p>
+        <button class="cam-btn" id="start-btn" onclick="startCamera()">Start camera</button>
+      </div>
+
+      <video id="video" autoplay muted playsinline aria-label="Live camera feed" style="display:none"></video>
+      <canvas id="overlay" aria-hidden="true" style="display:none"></canvas>
+
+      <div class="camera-corners" aria-hidden="true">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+      </div>
+
+      <div class="detection-overlay" aria-hidden="true">
+        <div class="big-letter" id="big-letter">A</div>
+      </div>
+
+      <div class="conf-overlay" aria-hidden="true">
+        <div class="conf-label">
+          <span>confidence</span>
+          <span id="conf-pct">0%</span>
+        </div>
+        <div class="conf-bar-track">
+          <div class="conf-bar-fill" id="conf-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WORD BUILDER -->
+    <div class="word-area" role="region" aria-label="Word builder">
+      <div class="word-area-label">building word</div>
+      <div class="word-display" id="word-display" aria-live="polite" aria-atomic="false">
+        <span class="cursor-blink" aria-hidden="true"></span>
+      </div>
+      <div class="word-actions">
+        <button class="action-btn speak" id="speak-btn" onclick="speakCurrentWord()" aria-label="Speak current word">
+          ▶ speak
+        </button>
+        <button class="action-btn" onclick="addSpace()" aria-label="Add space">space</button>
+        <button class="action-btn del" onclick="deleteLastLetter()" aria-label="Delete last letter">⌫ delete</button>
+        <button class="action-btn del" onclick="clearWord()" aria-label="Clear word">clear</button>
+        <span id="word-timer" style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--dimmed)" aria-hidden="true"></span>
+      </div>
+      <div class="timeout-bar" id="timeout-bar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <aside class="right-col" aria-label="Live statistics and history">
+    <div class="panel-tabs" role="tablist">
+      <button class="panel-tab active" role="tab" aria-selected="true"  onclick="switchTab('stats')" id="tab-stats">stats</button>
+      <button class="panel-tab"        role="tab" aria-selected="false" onclick="switchTab('history')" id="tab-history">history</button>
+      <button class="panel-tab"        role="tab" aria-selected="false" onclick="switchTab('settings')" id="tab-settings">settings</button>
+    </div>
+
+    <div class="panel-content" role="tabpanel">
+
+      <!-- STATS -->
+      <div class="tab-pane active" id="pane-stats">
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-val green" id="stat-letter">—</div>
+            <div class="stat-label">current letter</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val teal" id="stat-conf">0%</div>
+            <div class="stat-label">confidence</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val" id="stat-words">0</div>
+            <div class="stat-label">words this session</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val amber" id="stat-latency">—</div>
+            <div class="stat-label">latency (ms)</div>
+          </div>
+        </div>
+
+        <div class="mini-chart-label">CONFIDENCE · LAST 30 FRAMES</div>
+        <div class="mini-chart" id="mini-chart" aria-hidden="true">
+          <!-- bars injected by JS -->
+        </div>
+
+        <div class="mini-chart-label" style="margin-top:8px">STABLE FRAMES</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+          <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+            <div id="stable-bar" style="height:100%;background:var(--amber);border-radius:3px;width:0%;transition:width 0.1s ease"></div>
+          </div>
+          <span id="stable-count" style="font-family:var(--mono);font-size:10px;color:var(--dimmed);min-width:40px">0 / 10</span>
+        </div>
+
+        <div class="mini-chart-label">DETECTED HANDS</div>
+        <div style="display:flex;gap:8px;margin-bottom:4px">
+          <div id="hand-left"  style="flex:1;padding:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--dimmed);text-align:center;font-family:var(--mono)">left ○</div>
+          <div id="hand-right" style="flex:1;padding:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--dimmed);text-align:center;font-family:var(--mono)">right ○</div>
+        </div>
+      </div>
+
+      <!-- HISTORY -->
+      <div class="tab-pane" id="pane-history">
+        <div class="history-empty" id="history-empty">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>No words yet</span>
+        </div>
+        <div id="history-list"></div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="tab-pane" id="pane-settings">
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Auto-speak</div>
+            <div class="setting-sub">Speak word after 2s pause</div>
+          </div>
+          <button class="toggle on" id="toggle-autospeak" onclick="toggleSetting('autospeak')" aria-label="Toggle auto-speak" aria-pressed="true"></button>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Show landmarks</div>
+            <div class="setting-sub">Draw hand skeleton on feed</div>
+          </div>
+          <button class="toggle on" id="toggle-landmarks" onclick="toggleSetting('landmarks')" aria-label="Toggle landmark overlay" aria-pressed="true"></button>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Stability threshold</div>
+            <div class="setting-sub">Frames before accepting letter</div>
+          </div>
+          <div class="setting-range">
+            <input type="range" min="3" max="20" value="10" id="thresh-slider" oninput="updateThreshold(this.value)" aria-label="Stability threshold">
+            <span class="range-val" id="thresh-val">10</span>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Speech rate</div>
+            <div class="setting-sub">Words per minute</div>
+          </div>
+          <div class="setting-range">
+            <input type="range" min="0.5" max="2" step="0.1" value="1" id="rate-slider" oninput="updateRate(this.value)" aria-label="Speech rate">
+            <span class="range-val" id="rate-val">1×</span>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Backend URL</div>
+            <div class="setting-sub">WebSocket endpoint</div>
+          </div>
+          <input type="text" id="ws-url" value="ws://localhost:8000/ws"
+            style="background:var(--card);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:5px;width:160px">
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Connect to backend</div>
+        </div>
+        <button class="cam-btn" style="width:100%;margin-top:4px" onclick="connectWS()">Connect WebSocket</button>
+        <button class="cam-btn" style="width:100%;margin-top:8px;border-color:var(--border2);background:var(--card);color:var(--muted)" onclick="runDemo()">Run demo mode (no backend)</button>
+      </div>
+    </div>
+
+    <!-- TTS BAR -->
+    <div class="tts-bar" role="status" aria-live="polite" aria-atomic="true">
+      <div class="tts-indicator" id="tts-indicator" aria-hidden="true">
+        <div class="sound-waves">
+          <div class="wave-bar" id="w1" style="height:4px"></div>
+          <div class="wave-bar" id="w2" style="height:8px"></div>
+          <div class="wave-bar" id="w3" style="height:12px"></div>
+          <div class="wave-bar" id="w4" style="height:8px"></div>
+          <div class="wave-bar" id="w5" style="height:4px"></div>
+        </div>
+      </div>
+      <span class="tts-text" id="tts-text">ready</span>
+    </div>
+  </aside>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+const state = {
+  ws: null,
+  cameraActive: false,
+  currentLetter: '',
+  prevLetter: '',
+  stableCount: 0,
+  stableThreshold: 10,
+  currentWord: '',
+  sessionWords: 0,
+  lastSignTime: null,
+  autoSpeak: true,
+  showLandmarks: true,
+  speechRate: 1.0,
+  confHistory: new Array(30).fill(0),
+  demoMode: false,
+  demoInterval: null,
+  wordCount: 0,
+  lastSpeakTime: null,
+};
+
+const history = [];
+
+// ─── CAMERA ──────────────────────────────────────────────────────────────────
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } });
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    video.style.display = 'block';
+    document.getElementById('overlay').style.display = 'block';
+    document.getElementById('cam-placeholder').style.display = 'none';
+    state.cameraActive = true;
+
+    video.addEventListener('loadedmetadata', () => {
+      const canvas = document.getElementById('overlay');
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+    });
+
+    setFPSCounter();
+    startAutoSpeakTimer();
+    startFrameStream();
+  } catch(e) {
+    alert('Camera access denied. Please allow camera access and refresh.');
+  }
+}
+
+// FPS counter
+let lastFrameTime = 0, frameCount = 0;
+function setFPSCounter() {
+  function loop(ts) {
+    frameCount++;
+    if (ts - lastFrameTime >= 1000) {
+      document.getElementById('fps-display').textContent = frameCount + ' fps';
+      frameCount = 0; lastFrameTime = ts;
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── WEBSOCKET ───────────────────────────────────────────────────────────────
+function connectWS() {
+  const url = document.getElementById('ws-url').value;
+  try {
+    if (state.ws) state.ws.close();
+    state.ws = new WebSocket(url);
+    state.ws.onopen  = () => { updateWSStatus(true); };
+    state.ws.onclose = () => { updateWSStatus(false); };
+    state.ws.onerror = () => { updateWSStatus(false); };
+    state.ws.onmessage = (e) => handleWSMessage(JSON.parse(e.data));
+  } catch(err) {
+    console.warn('WS connect failed', err);
+  }
+}
+
+function updateWSStatus(connected) {
+  const el = document.getElementById('ws-status');
+  if (connected) {
+    el.className = 'status-pill live';
+    el.innerHTML = '<span class="dot"></span>backend connected';
+  } else {
+    el.className = 'status-pill offline';
+    el.innerHTML = '<span class="dot"></span>backend offline';
+  }
+}
+
+function handleWSMessage(data) {
+  // Expected: { letter, confidence, hands, landmarks, latency }
+  if (data.letter)     updateLetter(data.letter, data.confidence || 0);
+  if (data.landmarks)  drawLandmarks(data.landmarks);
+  if (data.latency)    document.getElementById('stat-latency').textContent = data.latency + 'ms';
+  if (data.hands) {
+    document.getElementById('hand-left').textContent  = data.hands.left  ? 'left ●'  : 'left ○';
+    document.getElementById('hand-left').style.color  = data.hands.left  ? 'var(--green)' : 'var(--dimmed)';
+    document.getElementById('hand-right').textContent = data.hands.right ? 'right ●' : 'right ○';
+    document.getElementById('hand-right').style.color = data.hands.right ? 'var(--green)'  : 'var(--dimmed)';
+  }
+  if (data.model_loaded) {
+    const ms = document.getElementById('model-status');
+    ms.className = 'status-pill live';
+    ms.innerHTML = '<span class="dot"></span>model loaded';
+  }
+}
+
+// ─── LETTER DETECTION ────────────────────────────────────────────────────────
+function updateLetter(letter, confidence) {
+  const conf = Math.round(confidence * 100);
+  state.confHistory.shift();
+  state.confHistory.push(conf);
+
+  // Stats
+  document.getElementById('stat-letter').textContent = letter || '—';
+  document.getElementById('stat-conf').textContent   = conf + '%';
+  document.getElementById('conf-pct').textContent    = conf + '%';
+  document.getElementById('conf-bar').style.width    = conf + '%';
+  updateMiniChart();
+
+  // Stability
+  if (letter === state.prevLetter) {
+    state.stableCount = Math.min(state.stableCount + 1, state.stableThreshold);
+  } else {
+    state.stableCount = 0;
+  }
+  const stablePct = (state.stableCount / state.stableThreshold) * 100;
+  document.getElementById('stable-bar').style.width    = stablePct + '%';
+  document.getElementById('stable-count').textContent  = state.stableCount + ' / ' + state.stableThreshold;
+
+  // Accept letter
+  if (state.stableCount >= state.stableThreshold && letter !== state.currentLetter) {
+    acceptLetter(letter);
+  }
+
+  state.prevLetter = letter;
+  showBigLetter(letter, conf > 40);
+}
+
+function acceptLetter(letter) {
+  state.currentLetter = letter;
+  state.stableCount = 0;
+  state.currentWord += letter;
+  state.lastSignTime = Date.now();
+  appendLetterToDisplay(letter);
+}
+
+function showBigLetter(letter, visible) {
+  const el = document.getElementById('big-letter');
+  if (!letter || !visible) { el.classList.remove('active'); return; }
+  if (el.textContent !== letter) {
+    el.textContent = letter;
+    el.classList.add('active', 'flash');
+    setTimeout(() => el.classList.remove('flash'), 300);
+  } else {
+    el.classList.add('active');
+  }
+}
+
+// ─── WORD DISPLAY ─────────────────────────────────────────────────────────────
+function appendLetterToDisplay(letter) {
+  const wd = document.getElementById('word-display');
+  const cursor = wd.querySelector('.cursor-blink');
+  const chip = document.createElement('span');
+  chip.className = 'letter-chip';
+  chip.textContent = letter;
+  chip.setAttribute('aria-label', letter);
+  wd.insertBefore(chip, cursor);
+}
+
+function addSpace() {
+  if (!state.currentWord) return;
+  speakCurrentWord();
+}
+
+function deleteLastLetter() {
+  if (!state.currentWord) return;
+  state.currentWord = state.currentWord.slice(0, -1);
+  state.currentLetter = state.currentWord.slice(-1) || '';
+  const wd = document.getElementById('word-display');
+  const chips = wd.querySelectorAll('.letter-chip');
+  if (chips.length) chips[chips.length - 1].remove();
+}
+
+function clearWord() {
+  state.currentWord  = '';
+  state.currentLetter = '';
+  const wd = document.getElementById('word-display');
+  wd.querySelectorAll('.letter-chip').forEach(c => c.remove());
+}
+
+// ─── AUTO-SPEAK TIMER ────────────────────────────────────────────────────────
+function startAutoSpeakTimer() {
+  setInterval(() => {
+    if (!state.currentWord || !state.autoSpeak) return;
+    if (!state.lastSignTime) return;
+    const elapsed = (Date.now() - state.lastSignTime) / 1000;
+    const timeout = 2.5;
+    const pct = Math.min((elapsed / timeout) * 100, 100);
+    document.getElementById('timeout-bar').style.width = pct + '%';
+    if (elapsed >= timeout) {
+      speakCurrentWord();
+      state.lastSignTime = null;
+      document.getElementById('timeout-bar').style.width = '0%';
+    }
+  }, 80);
+}
+
+// ─── SPEECH ──────────────────────────────────────────────────────────────────
+let synth = window.speechSynthesis;
+function speakCurrentWord() {
+  if (!state.currentWord) return;
+  const word = state.currentWord;
+  speakText(word);
+  addToHistory(word);
+  clearWord();
+  state.sessionWords++;
+  document.getElementById('stat-words').textContent = state.sessionWords;
+}
+
+function speakText(text) {
+  if (!text) return;
+  synth.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate = state.speechRate;
+  utt.lang = 'en-IN';
+
+  const indicator = document.getElementById('tts-indicator');
+  const ttsText   = document.getElementById('tts-text');
+  ttsText.textContent = text;
+  ttsText.classList.add('active');
+  indicator.classList.add('speaking');
+  animateWaves(true);
+
+  utt.onend = () => {
+    indicator.classList.remove('speaking');
+    ttsText.classList.remove('active');
+    ttsText.textContent = 'ready';
+    animateWaves(false);
+  };
+  synth.speak(utt);
+}
+
+function animateWaves(active) {
+  const ids = ['w1','w2','w3','w4','w5'];
+  const heights = [[4,8,12,8,4],[6,12,18,12,6],[3,6,10,6,3]];
+  let i = 0;
+  if (active) {
+    state._waveInterval = setInterval(() => {
+      const h = heights[i % heights.length];
+      ids.forEach((id, idx) => {
+        document.getElementById(id).style.height = h[idx] + 'px';
+      });
+      i++;
+    }, 200);
+  } else {
+    clearInterval(state._waveInterval);
+    const def = [4,8,12,8,4];
+    ids.forEach((id, idx) => { document.getElementById(id).style.height = def[idx] + 'px'; });
+  }
+}
+
+// ─── HISTORY ─────────────────────────────────────────────────────────────────
+function addToHistory(word) {
+  const now = new Date();
+  const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  history.unshift({ word, time, letters: word });
+
+  document.getElementById('history-empty').style.display = 'none';
+  const list = document.getElementById('history-list');
+  const item = document.createElement('div');
+  item.className = 'history-item';
+  item.innerHTML = `
+    <span class="hist-time">${time}</span>
+    <div>
+      <div class="hist-word">${word}</div>
+      <div class="hist-letters">${word.split('').join(' · ')}</div>
+    </div>
+    <button class="hist-speak" onclick="speakText('${word}')" aria-label="Replay ${word}">▶ play</button>`;
+  list.prepend(item);
+}
+
+// ─── MINI CHART ──────────────────────────────────────────────────────────────
+function updateMiniChart() {
+  const chart = document.getElementById('mini-chart');
+  const bars  = chart.querySelectorAll('.mini-bar');
+  if (bars.length !== 30) {
+    chart.innerHTML = '';
+    for (let i = 0; i < 30; i++) {
+      const b = document.createElement('div');
+      b.className = 'mini-bar' + (i === 29 ? ' current' : '');
+      chart.appendChild(b);
+    }
+  }
+  chart.querySelectorAll('.mini-bar').forEach((b, i) => {
+    b.style.height = Math.max(2, state.confHistory[i] / 100 * 48) + 'px';
+  });
+}
+
+// ─── CANVAS LANDMARKS ────────────────────────────────────────────────────────
+function drawLandmarks(landmarks) {
+  if (!state.showLandmarks) return;
+  const canvas = document.getElementById('overlay');
+  const ctx    = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!landmarks || !landmarks.length) return;
+
+  const connections = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [5,9],[9,10],[10,11],[11,12],
+    [9,13],[13,14],[14,15],[15,16],
+    [13,17],[17,18],[18,19],[19,20],[0,17]
+  ];
+
+  landmarks.forEach(hand => {
+    ctx.strokeStyle = 'rgba(63,185,80,0.6)';
+    ctx.lineWidth   = 1.5;
+    connections.forEach(([a,b]) => {
+      ctx.beginPath();
+      ctx.moveTo(hand[a].x * canvas.width, hand[a].y * canvas.height);
+      ctx.lineTo(hand[b].x * canvas.width, hand[b].y * canvas.height);
+      ctx.stroke();
+    });
+    hand.forEach(pt => {
+      ctx.fillStyle = 'rgba(63,185,80,0.9)';
+      ctx.beginPath();
+      ctx.arc(pt.x * canvas.width, pt.y * canvas.height, 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  });
+}
+
+// ─── DEMO MODE ───────────────────────────────────────────────────────────────
+const DEMO_WORDS = ['NAMASTE','WATER','HELP','PLEASE','THANK'];
+const DEMO_CONF  = [0.92,0.85,0.78,0.91,0.88,0.72,0.95];
+let demoWordIdx  = 0, demoLetterIdx = 0, demoLetterTimer = null;
+
+function runDemo() {
+  startCamera().catch(()=>{});
+  state.demoMode = true;
+  const mStatus = document.getElementById('model-status');
+  mStatus.className = 'status-pill live';
+  mStatus.innerHTML = '<span class="dot"></span>demo model';
+  runNextDemoWord();
+}
+
+function runNextDemoWord() {
+  const word   = DEMO_WORDS[demoWordIdx % DEMO_WORDS.length];
+  demoLetterIdx = 0;
+  demoWordIdx++;
+
+  function nextLetter() {
+    if (demoLetterIdx >= word.length) {
+      setTimeout(runNextDemoWord, 2000);
+      return;
+    }
+    const letter = word[demoLetterIdx];
+    const conf   = DEMO_CONF[Math.floor(Math.random() * DEMO_CONF.length)];
+    // simulate stable frames
+    let frames = 0;
+    const stab = setInterval(() => {
+      updateLetter(letter, conf);
+      frames++;
+      if (frames >= state.stableThreshold + 2) {
+        clearInterval(stab);
+        demoLetterIdx++;
+        setTimeout(nextLetter, 300);
+      }
+    }, 80);
+  }
+  nextLetter();
+}
+
+// ─── SETTINGS ────────────────────────────────────────────────────────────────
+function toggleSetting(key) {
+  if (key === 'autospeak') {
+    state.autoSpeak = !state.autoSpeak;
+    const btn = document.getElementById('toggle-autospeak');
+    btn.classList.toggle('on', state.autoSpeak);
+    btn.setAttribute('aria-pressed', state.autoSpeak);
+  }
+  if (key === 'landmarks') {
+    state.showLandmarks = !state.showLandmarks;
+    const btn = document.getElementById('toggle-landmarks');
+    btn.classList.toggle('on', state.showLandmarks);
+    btn.setAttribute('aria-pressed', state.showLandmarks);
+    if (!state.showLandmarks) {
+      const canvas = document.getElementById('overlay');
+      const ctx    = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+}
+
+function updateThreshold(v) {
+  state.stableThreshold = parseInt(v);
+  document.getElementById('thresh-val').textContent = v;
+}
+
+function updateRate(v) {
+  state.speechRate = parseFloat(v);
+  document.getElementById('rate-val').textContent = parseFloat(v).toFixed(1) + '×';
+}
+
+// ─── TABS ────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.panel-tab').forEach(t => {
+    t.classList.remove('active');
+    t.setAttribute('aria-selected','false');
+  });
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('tab-' + name).setAttribute('aria-selected','true');
+  document.getElementById('pane-' + name).classList.add('active');
+}
+
+// ─── FRAME STREAMING ─────────────────────────────────────────────────────────
+let streamCanvas = null;
+let streamCtx    = null;
+
+function startFrameStream() {
+  streamCanvas = document.createElement('canvas');
+  streamCtx    = streamCanvas.getContext('2d');
+  streamLoop();
+}
+
+async function streamLoop() {
+  const video = document.getElementById('video');
+  if (!video.videoWidth) { requestAnimationFrame(streamLoop); return; }
+
+  if (!streamCanvas.width) {
+    streamCanvas.width  = Math.min(video.videoWidth,  640);
+    streamCanvas.height = Math.min(video.videoHeight, 480);
+  }
+
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    streamCtx.drawImage(video, 0, 0, streamCanvas.width, streamCanvas.height);
+    const b64 = streamCanvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+    state.ws.send(JSON.stringify({ type: 'frame', data: b64 }));
+  }
+
+  setTimeout(() => requestAnimationFrame(streamLoop), 60); // ~16.67fps
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+updateMiniChart();
+</script>
+</body>
+</html>

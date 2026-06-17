@@ -1,5 +1,3 @@
-#this file collects imgs from the webcam and saves to dataset 
-
 import os
 import cv2
 
